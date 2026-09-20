@@ -1,0 +1,13 @@
+FoamFile { version 2.0; format ascii; class dictionary; object fvSolution; }
+solvers
+{
+    p      { solver PCG; preconditioner DIC; tolerance 1e-10; relTol 0; }
+    pFinal { $p; relTol 0; }
+    "(U|UFinal)" { solver PBiCGStab; preconditioner DILU; tolerance 1e-10; relTol 0; }
+}
+PIMPLE
+{
+    momentumPredictor yes; nOuterCorrectors 1; nCorrectors 2; nNonOrthogonalCorrectors 0;
+    consistent no; pRefCell 0; pRefValue 0;
+}
+relaxationFactors { equations { ".*" 1; } }

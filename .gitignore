@@ -1,0 +1,14 @@
+*.o
+*.so
+linux*Opt/
+linux*Debug/
+Make/linux*
+postProcessing/
+processor*/
+log.*
+[1-9]*/
+0.[0-9]*/
+!0/
+*.pyc
+__pycache__/
+.DS_Store

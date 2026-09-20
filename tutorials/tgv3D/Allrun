@@ -1,0 +1,7 @@
+#!/bin/bash
+cd "${0%/*}" || exit 1
+. ${WM_PROJECT_DIR:?}/bin/tools/RunFunctions
+runApplication blockMesh
+runApplication setExprFields
+runApplication $(getApplication)
+echo "RUN OK"; grep -E "kineticEnergyAudit" log.pimpleFoam | tail -3
