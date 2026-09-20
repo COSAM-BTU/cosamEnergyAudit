@@ -1,20 +1,32 @@
 #!/usr/bin/env python3
-"""Paper data extraction (runs ON super00). Writes ~/tgvAudit/paperData/: metrics_all.csv (one row per run), ts_<run_id>.csv
-(strided time series), ref_*.csv (references), v1p_diff.csv. Columns follow the FO header (INSTRUCTIONS §6)."""
+"""Extract the audit data of a campaign into CSV tables: metrics_all.csv (one row per run), ts_<run_id>.csv (strided time
+series), rcl_<run_id>.csv (closure residual of every step), ref_*.csv (reference solutions), v1p_diff.csv.
+Usage: paperData.py --root <campaign dir> --out <output dir> [--ref <spectral reference file>]"""
 import numpy as np, glob, os, json, csv, re
-R="/scratch/soscfd00/tgvAudit"; OUT=os.path.expanduser("~/tgvAudit/paperData"); os.makedirs(OUT, exist_ok=True)
-REF=os.path.expanduser("~/tgvAudit/stage1/spectral/ref/spectral_Re1600_512.gdiag"); SP=R+"/spectral"
+import argparse
+_ap=argparse.ArgumentParser(description="Extract the audit data of a campaign into CSV tables.")
+_ap.add_argument("--root", required=True, help="campaign directory holding the run directories, grouped in blocks")
+_ap.add_argument("--out", required=True, help="output directory for the CSV tables")
+_ap.add_argument("--ref", default=None, help="spectral reference file for Re=1600 (gdiag format)")
+_a=_ap.parse_args()
+R=os.path.abspath(os.path.expanduser(_a.root)); OUT=os.path.abspath(os.path.expanduser(_a.out)); os.makedirs(OUT, exist_ok=True)
+REF=os.path.abspath(os.path.expanduser(_a.ref)) if _a.ref else None; SP=R+"/spectral"
 cols="t dt timeIndex CoMax K dKdt epsNu twoNuSS Omega twoNuOmega eTime eTimeDiss eTimeStore eConv eMesh eCont ePres eDev ePhi eIter sumE Rclosure cumClosure RcellMax chkConv chkDiff chkTime chkPres eConvOwner eMeshOwner epsNuOwner eTimeHalf eConvHalf eDiffHalf ePresHalf eIterHalf maskFrac sumFluxC sumFluxD sumFluxX eIterInstr chkInstr".split()
 def load(case):
     fs=sorted(glob.glob(case+"/postProcessing/kineticEnergyAudit/*/kineticEnergyAudit.dat")); arrs=[np.loadtxt(f,comments="#",ndmin=2) for f in fs]
     d=np.vstack([a for a in arrs if a.size]); d=d[np.argsort(d[:,0])]; return {k:d[:,i] for i,k in enumerate(cols[:d.shape[1]])}
 def ref_for(Re):
-    if Re==1600: u=np.loadtxt(REF,comments="#"); return u[:,0],u[:,1],u[:,2],2*u[:,3]/1600.,"UCL512"
-    n={100:128,280:192}[Re]; u=np.loadtxt("%s/spec_Re%d_N%d.dat"%(SP,Re,n),comments="#"); return u[:,0],u[:,1],u[:,2],u[:,2],"specN%d"%n
+    if Re==1600:
+        if not REF: return None
+        u=np.loadtxt(REF,comments="#"); return u[:,0],u[:,1],u[:,2],2*u[:,3]/1600.,"UCL512"
+    n={100:128,280:192}[Re]; f="%s/spec_Re%d_N%d.dat"%(SP,Re,n)
+    if not os.path.exists(f): return None
+    u=np.loadtxt(f,comments="#"); return u[:,0],u[:,1],u[:,2],u[:,2],"specN%d"%n
 # references
-for Re,(tr,Kr,er,e2,nm) in [(Re,ref_for(Re)) for Re in (100,280,1600)]:
+for Re,(tr,Kr,er,e2,nm) in [(Re,r) for Re in (100,280,1600) for r in [ref_for(Re)] if r]:
     np.savetxt(OUT+"/ref_Re%d_%s.csv"%(Re,nm), np.column_stack([tr,Kr,er])[::max(1,len(tr)//400)], delimiter=",", header="t,K,eps", comments="")
-u=np.loadtxt(SP+"/spec_Re1600_N256.dat",comments="#"); np.savetxt(OUT+"/ref_Re1600_ownspec256.csv", np.column_stack([u[:,0],u[:,1],u[:,2]])[::10], delimiter=",", header="t,K,eps", comments="")
+if os.path.exists(SP+"/spec_Re1600_N256.dat"):
+    u=np.loadtxt(SP+"/spec_Re1600_N256.dat",comments="#"); np.savetxt(OUT+"/ref_Re1600_ownspec256.csv", np.column_stack([u[:,0],u[:,1],u[:,2]])[::10], delimiter=",", header="t,K,eps", comments="")
 rows=[]
 for blk in ("V2","S","Sint","F","T","V1p","Vadapt","Lchk","V3","Vpar"):
     for case in sorted(glob.glob(R+"/"+blk+"/*_h*")):

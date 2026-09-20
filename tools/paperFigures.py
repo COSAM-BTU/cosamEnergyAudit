@@ -1,8 +1,17 @@
 #!/usr/bin/env python3
-"""Generate the paper's PGFplots figures (PGFPLOTS_RULES.md compliant) from stage1/paperData into paper/figures/<name>/.
-Each figure: standalone .tex + its CSV data copied into the subfolder; compiled with pdflatex; symlink figures/<name>.pdf."""
+"""Generate the PGFplots figures of the paper from the extracted CSV data.
+Each figure is a standalone .tex file with its CSV data in the same subfolder, compiled with pdflatex.
+Usage: paperFigures.py [--data <csv dir>] [--out <figure dir>]   (defaults: ../paperData and ../figures)"""
 import os, shutil, subprocess, csv, math, re, numpy as np
-HERE=os.path.dirname(os.path.abspath(__file__)); D=os.path.join(HERE,"..","paperData"); FIG=os.path.join(HERE,"..","..","paper","figures")
+import argparse
+_ap=argparse.ArgumentParser(description="Generate the PGFplots figures of the paper.")
+_ap.add_argument("--data", default=None, help="directory holding the extracted CSV data (default: ../paperData)")
+_ap.add_argument("--out", default=None, help="output directory for the figures (default: ../figures)")
+_a=_ap.parse_args()
+HERE=os.path.dirname(os.path.abspath(__file__))
+D=os.path.abspath(_a.data) if _a.data else os.path.join(HERE,"..","paperData")
+FIG=os.path.abspath(_a.out) if _a.out else os.path.join(HERE,"..","figures")
+os.makedirs(FIG, exist_ok=True)
 COL=["blue","red","black","orange","brown","green!20!black","gray"]
 # ---- global colour maps: ONE mapping used by every figure, assigned explicitly per series
 #      (never through a cycle list, so a panel missing one member keeps the others' colours)
@@ -139,7 +148,7 @@ print("done")
 # ---- V3: audit vs built-in function objects and the classical enstrophy-based estimate (64^3 Re=1600 B0)
 figure("v3_compare",[S("v3_compare.csv","eNum_FO",COL[0],"$e_\\mathrm{num}$ (audit)"),S("v3_compare.csv","eNum_classical",COL[1],"$-\\mathrm{d}K/\\mathrm{d}t-2\\nu\\Omega$"),S("v3_compare.csv","epsNu",COL[2],"$\\varepsilon_\\nu$"),S("v3_compare.csv","twoNuOmega",COL[3],"$2\\nu\\Omega$")],T,"rate $[-]$",(0,20),(0,0.012),TX,yticks(0,0.012,0.002,3),legend_cols=2)
 
-# ---- alignment pass (2026-09-20): panels placed side by side in the manuscript must have identical PDF heights, otherwise the
+# ---- alignment pass: panels placed side by side in the manuscript must have identical PDF heights, otherwise the
 # baseline alignment of \includegraphics shifts the axis frames when the legends have different numbers of rows. For every row
 # of panels the shorter PDFs get their legend moved down (larger gap between axis and legend) until the heights match.
 import re as _re

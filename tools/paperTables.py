@@ -1,7 +1,15 @@
 #!/usr/bin/env python3
-"""Generate LaTeX tables (COSAM rules: tabular* + extracolsep, booktabs, caption before) from paperData/metrics_all.csv into paper/tables/."""
+"""Generate the LaTeX tables of the paper (tabular* with booktabs) from the extracted metrics_all.csv.
+Usage: paperTables.py [--data <csv dir>] [--out <table dir>]   (defaults: ../paperData and ../tables)"""
 import csv, os, math
-HERE=os.path.dirname(os.path.abspath(__file__)); D=os.path.join(HERE,"..","paperData"); OUT=os.path.join(HERE,"..","..","paper","tables"); os.makedirs(OUT,exist_ok=True)
+import argparse
+_ap=argparse.ArgumentParser(description="Generate the LaTeX tables of the paper.")
+_ap.add_argument("--data", default=None, help="directory holding metrics_all.csv (default: ../paperData)")
+_ap.add_argument("--out", default=None, help="output directory for the tables (default: ../tables)")
+_a=_ap.parse_args()
+HERE=os.path.dirname(os.path.abspath(__file__))
+D=os.path.abspath(_a.data) if _a.data else os.path.join(HERE,"..","paperData")
+OUT=os.path.abspath(_a.out) if _a.out else os.path.join(HERE,"..","tables"); os.makedirs(OUT,exist_ok=True)
 rows=list(csv.DictReader(open(os.path.join(D,"metrics_all.csv"))))
 f=lambda x,d=3: ("%%.%df"%d)%float(x)
 pct=lambda x: "%+.1f"%(100*float(x))

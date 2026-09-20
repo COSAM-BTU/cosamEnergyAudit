@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.1 (2026-09-20)
+
+- Documentation: the derivation document is rewritten in English and is self-contained.
+- Tools: campaign directory, output directory and reference solution are command-line arguments; the polyhedral mesh directory is
+  read from `POLYMESH_DIR`; the figure and table scripts take `--data` and `--out`.
+- Tutorials: the run scripts use the standard OpenFOAM `RunFunctions` instead of a fixed installation path.
+- No change to the function object source; results are unaffected.
+
 ## 1.1.0 (2026-09-18)
 
 - Variable time step: the BDF2 time term is evaluated with the operator route `a . T(a) V - dK/dt` whenever the step changes,

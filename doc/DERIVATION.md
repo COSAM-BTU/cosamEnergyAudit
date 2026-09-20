@@ -1,143 +1,202 @@
-# DERIVATION.md — Ayrık kinetik-enerji denetimi: türetim ve konvansiyon (v0.1, 2026-09-15; Aşama 1 adım 1)
+# Derivation of the discrete kinetic-energy identity
 
-Durum: **v0.1 DOĞRULANDI (2026-09-15)** — `stage1/toyClosure.py` (2B periyodik, N = 8 düzgün / 12 ve 16 rastgele pertürbe,
-rastgele alanlar): §2–§7'nin tüm özdeşlikleri (Euler/BDF2/CN kapalı formlar, midPoint/linear/upwind yüz ayrışımı, G^T
-transpoze + X_f hücre özdeşliği, difüzyon non-orth dahil, tam kapanış hücre ve küresel, e_φ) rel. hata ≤ 2e-14. Adım 1 GO.
-Kaynak: CLAUDE_REVIEW.md §2 iskeleti + kendi türetmelerim; OpenFOAM v2406 operatör tanımları kaynak koddan.
+This document derives, term by term, the identity that the `kineticEnergyAudit` function object evaluates, and it fixes the
+attribution convention. The reference implementation is OpenFOAM v2406; the operator definitions below are those of its source.
+All identities were verified numerically to round-off on two-dimensional periodic meshes (uniform and randomly perturbed) with
+random fields, with relative errors below 2e-14.
 
-## 0. Notasyon
-- Hücre P (hacim V_P, merkez x_P); yüz f (alan vektörü S_f owner O(f) → neighbour N(f), |S_f|, merkez x_f);
-  s_{Pf} = +1 (P = O), −1 (P = N). Cyclic ve processor yüzler iç yüz gibi (komşu değerleri patchNeighbourField).
-- Yüz akısı φ_f (hacimsel, owner'dan dışa pozitif) = pEqn'in ürettiği Rhie–Chow akısı. (div φ)_P V_P = Σ_f s φ_f.
-- Zaman: a = U^{n+1}, b = U^n, d = U^{n−1}; Δt sabit; K_P = ½|a_P|² V_P; küresel K = Σ K_P / V_Ω.
-- Linear ağırlık w_f (owner tarafı): U_f^{lin} = w_f U_O + (1−w_f) U_N; OpenFOAM: w_f = |S_f·(x_N − x_f)| / (|S_f·(x_f − x_O)| + |S_f·(x_N − x_f)|). midPoint: U_f^{mid} = ½(U_O + U_N). Düzgün hex'te w_f = ½.
-- Seçilen şema: U_f^{sch} = U_f^{mid} + δ_f (δ_f: şemaya özgü sapma; limitli/gradyanlı şemalarda U'ya bağlı).
+## 0. Notation
 
-## 1. Çözücünün kurduğu ayrık momentum denklemi (pimpleFoam v2406, laminer, PISO nOuter = 1)
-UEqn.H: fvm::ddt(U) + fvm::div(phi, U) + divDevReff(U) = 0, sonra solve(UEqn == −grad p); divDevReff =
-−fvc::div(ν dev2(T(∇U))) − fvm::laplacian(ν, U). Hücre formunda (V_P ile çarpılmış):
-  T(a)_P V_P + Σ_f s φ^n_f U_f^{sch} − Σ_f s J_f(a) − D2_P V_P + Σ_f s S_f p_f = r_P V_P          (1)
-- φ_used = φ^n (UEqn dış döngü başında, pEqn'den önce kurulur; PIMPLE nOuter > 1'de son dış iterasyonun φ'si ≈ φ^{n+1}).
-- Difüzyon akısı J_f = ν_f |S_f| [δ_f (U_N − U_O) + k_f·(∇U)_f]  (Gauss linear corrected; δ_f = nonOrthDeltaCoeffs,
-  k_f = non-ortogonal düzeltme vektörü, düzgün hex'te 0; (∇U)_f linear interpolasyonlu Gauss gradyanı).
-- D2_P = [fvc::div(ν dev2(T(∇U)))]_P (explicit; sürekli limitte ν∇(∇·u) = 0, ayrık olarak ≠ 0).
-- r_P: momentum artığı — (1)'i nihai a, p^{n+1}, φ^n ile yeniden kurunca kalan. İçeriği: PISO bölme artığı (Issa 1986),
-  lineer çözücü artıkları, doğrusal-olmama gecikmesi (limiter/gradyan/non-orth/dev2 terimleri çözücüde U^n veya U* ile,
-  FO'da a ile değerlendirilir).
-Birincil konvansiyon: (1) a_P ile nokta-çarpılır ve hacim ağırlıklı toplanır.
+- Cell `P` (volume `V_P`, centre `x_P`); face `f` (area vector `S_f` pointing from the owner `O(f)` to the neighbour `N(f)`,
+  magnitude `|S_f|`, centre `x_f`); `s_Pf = +1` if `P = O(f)` and `-1` otherwise. Cyclic and processor faces are treated as
+  interior faces, the neighbour value being obtained from the coupled patch.
+- Face flux `phi_f` (volumetric, positive out of the owner): the Rhie-Chow flux produced by the pressure equation.
+  `(div phi)_P V_P = sum_f s_Pf phi_f`.
+- Time levels: `a = U^{n+1}`, `b = U^n`, `d = U^{n-1}`; cell energy `K_P = 1/2 |a_P|^2 V_P`; domain energy `K = sum_P K_P / V`.
+- Linear interpolation weight `w_f` (owner side): `U_f^lin = w_f U_O + (1-w_f) U_N`, with
+  `w_f = |S_f.(x_N - x_f)| / (|S_f.(x_f - x_O)| + |S_f.(x_N - x_f)|)`; mid-point interpolation `U_f^mid = 1/2 (U_O + U_N)`.
+  On a uniform hexahedral mesh `w_f = 1/2`.
+- Selected convection scheme: `U_f^sch = U_f^mid + delta_f`, where `delta_f` is the scheme-specific deviation (for limited or
+  gradient-based schemes it depends on `U`).
 
-## 2. Zamansal terim: e_time := a·T(a) V − (K^{n+1} − K^n)/Δt
-### 2.1 Euler: T(a) = (a − b)/Δt
-  a·(a−b) = ½|a|² − ½|b|² + ½|a−b|²  ⇒  e_time = ½|a−b|² V/Δt ≥ 0  (kesin, disipatif).
-### 2.2 backward (BDF2), sabit Δt: T(a) = (3a − 4b + d)/(2Δt)
-Özdeşlik (Dahlquist G-kararlılığı; elle doğrulandı): 2a·(3a−4b+d) = |a|² + |2a−b|² − |b|² − |2b−d|² + |a−2b+d|².
-E_G(a,b) := ¼(|a|² + |2a−b|²), X(a,b) := E_G(a,b) − ½|a|² = ¼(a−b)·(3a−b). Böylece
-  a·T(a) = [E_G(a,b) − E_G(b,d)]/Δt + |a−2b+d|²/(4Δt)
-  e_time = [X(a,b) − X(b,d)] V/Δt  +  |a−2b+d|² V/(4Δt)  =: e_time^{store} + e_time^{diss}.
-- e_time^{diss} ≥ 0 kesin disipatif; e_time^{store} teleskoplar (zaman integrali sınır terimine iner), işareti belirsiz.
-- Kontrol: a−b = b−d = v ⇒ e_time = ½|v|² V/Δt (yalnız depolama). ✓
-- OpenFOAM değişken-adım katsayıları (ω = Δt_n/Δt_{n−1}): c = (1+2ω)/(1+ω), c0 = 1+ω, c00 = ω²/(1+ω). Sabit adımda
-  3/2, 2, 1/2. Değişken adımda e_time artık olarak yine kesin hesaplanır; diss/store ayrımı ω'ya bağlı G-norm ister
-  (Liao & Zhang 2021) → üretimde sabit Δt.
-- İlk adım: timeIndex < 2 → deltaT0 = GREAT → c ≈ 1, c00 ≈ 0 → Euler; FO adım 1'de §2.1'i kullanır.
-### 2.3 CrankNicolson(ψ): T(a) = ((1+ψ)/Δt)(a − b) − ψ·ddt0^n
-ddt0^n = kayıt defterindeki `ddt0(U)` (adımın ilk fvm/fvc::ddt çağrısında güncellenir; aynı timeIndex'te tekrar
-güncellenmez — evaluate() bayrağı). a·(a−b) özdeşliğiyle
-  e_time = ψ[(K^{n+1}−K^n)/Δt − a·ddt0^n V] + ((1+ψ)/(2Δt))|a−b|² V.
-ψ = 0 → Euler. İlk adım: coef = 1 (Euler) → §2.1.
-### 2.4 Alternatif çarpan U^{n+½} = ½(a+b)
-½(a+b)·(a−b)/Δt = (K^{n+1}−K^n)/Δt kesin ⇒ Euler'de e_time^{(½)} ≡ 0; zamansal hata diğer terimlere taşınır.
-Yalnız küresel zaman serisi için hesaplanır (yerel yüz ayrışımı a-tabanlıdır).
+## 1. The discrete momentum equation assembled by the solver
 
-## 3. Konvektif terim: W_P := a_P·Σ_f s φ_f U_f^{sch}
-U_f^{sch} = U_f^{mid} + δ_f ve a_P·δ_f = ½(a_P − a_N)·δ_f + U_f^{mid}·δ_f ile, yüz başına (P = O için; N için s → −s):
-  s φ_f a_P·U_f^{sch} = s φ_f ½|a_P|²  +  ½ d_f  +  s F^C_f,
-  d_f := s_{Pf} φ_f (a_P − a_N)·δ_f  (P ↔ N simetrik: her iki hücrede aynı değer),
-  F^C_f := φ_f [½ a_O·a_N + U_f^{mid}·δ_f]  (P ↔ N simetrik ⇒ Σ_P Σ_f s F^C_f = 0, teleskoplar).
-Tanımlar (hücre başına):
-  e_cont(P) := ½|a_P|² Σ_f s φ_f = ½|a_P|² (div φ)_P V_P;
-  m_f := d_f[linear] = s φ_f (w_f − ½)(a_P − a_N)·(a_O − a_N) → düzgün hex'te 0;   e_mesh(P) := ½ Σ_f m_f;
-  e_conv(P) := ½ Σ_f (d_f^{sch} − m_f)  (şemanın linear'dan sapması; linear için ≡ 0; midPoint için = −e_mesh).
-  W_P = e_cont + e_conv + e_mesh + Σ_f s F^C_f;  küresel: Σ_P W_P = Σ_P (e_cont + e_conv + e_mesh).
-Özel şemalar: upwind: δ_f = ±½(a_O − a_N) (akış yönüne göre) ⇒ d_f = ½|φ_f||a_O − a_N|² ≥ 0.
-linear: δ_f = (w_f − ½)(a_O − a_N). cubic/LUST/linearUpwind/limitedLinear: δ_f gradyan/limiter içerir → d_f işaretsiz.
-Hücre dağıtımı konvansiyonu: yüz terimi ½–½ (birincil); alternatif owner-tarafı (yerel alanı değiştirir, küresel toplamı
-değiştirmez). Akı konvansiyonu: φ^n (birincil); e_φ(P) := a_P·Σ_f s (φ^{n+1}_f − φ^n_f) U_f^{sch}[φ^{n+1}] − a_P·Σ_f s φ^n_f U_f^{sch}[φ^n]
-(genel; lineer şemalarda a_P·Σ_f s (φ^{n+1}−φ^n)_f U_f^{sch}).
+For `pimpleFoam` (laminar, PISO mode, one outer corrector) the momentum predictor is
+`fvm::ddt(U) + fvm::div(phi, U) + divDevReff(U) = 0`, solved as `solve(UEqn == -fvc::grad(p))`, with
+`divDevReff = -fvc::div(nu dev2(T(grad U))) - fvm::laplacian(nu, U)`. In cell form (multiplied by `V_P`):
 
-## 4. Basınç terimi: a_P·(G p)_P V_P = Σ_f s S_f·a_P p_f, p_f = w_f p_O + (1−w_f) p_N
-Transpoze (summation-by-parts): Σ_P a_P·(Gp)_P V_P = Σ_P p_P (G^T a)_P V_P ile
-  (G^T a)_P V_P := Σ_f s_{Pf} ω_{Pf} S_f·(a_P − a_{P'}) = Σ_{f∈P} ω_{Pf} S_f·(a_O(f) − a_N(f)),   ω_{Pf} = w_f (P = O) veya 1 − w_f (P = N).
-  (Uygulama notu: her iki tarafta da ω_P·S_f·(a_O − a_N) — komşu tarafında işaret ters yazılırsa özdeşlik bozulur; toy test bunu yakaladı.)
-Eşdeğer: (G^T a)_P V_P = −Σ_f s S_f·Ũ_f, Ũ_f = (1−ω_{Pf}) a_P + ω_{Pf} a_{P'} (ağırlıkları yer değiştirilmiş
-interpolasyon) — yani "ağırlık-transpoze ıraksama"; düzgün hex'te (w = ½) −(div_{mid} a)_P V_P. [İşaret: G^T a = −div^{dual} a.]
-Hücre özdeşliği (kesin): a_P·(Gp)_P V_P = p_P (G^T a)_P V_P + Σ_f s X_f,  X_f := w_f p_O (S_f·a_N) + (1−w_f) p_N (S_f·a_O)
-(P ↔ N için aynı X_f ⇒ teleskoplar).
-  e_pres(P) := p_P (G^T a)_P V_P.
-Fiziksel okuma: pEqn div φ = 0 sağlarken kollokasyonlu hızın ağırlık-transpoze ıraksaması sıfır değildir; fark Rhie–Chow
-filtresi − ddtCorr'dur (φ = S·interp(HbyA) + ddtCorr − rAU_f ∇_f p·S; a = HbyA − rAU ∇p). ddtCorr payı ayrı ölçülmez;
-"ddtCorr off" (`backward 0`) koşusuyla fark alınır. Alternatif yerel dağıtım (yüz-artığı formu): e_pres'(P) := Σ_f s p_f S_f·(a_P − U_f^{mid});
-küresel toplam aynı, yerel farklı — "convention sensitivity".
+    T(a)_P V_P + sum_f s phi^n_f U_f^sch - sum_f s J_f(a) - D2_P V_P + sum_f s S_f p_f = r_P V_P        (1)
 
-## 5. Difüzyon: a_P·Σ_f s J_f
-a_P·J_f = ½(a_O + a_N)·J_f + ½ s (a_O − a_N)·J_f... (P = O için s = +1). Owner: a_O·J = ½(a_O+a_N)·J + ½(a_O−a_N)·J;
-neighbour: −a_N·J = −½(a_O+a_N)·J + ½(a_O−a_N)·J. Simetrik kısım F^D_f := ½(a_O + a_N)·J_f teleskoplar; her iki hücre
-½(a_O − a_N)·J_f alır. J_f'nin ortogonal kısmı ν|S_f|δ_f(a_N − a_O) ile ½(a_O−a_N)·J_f = −½ g_f + ½(a_O−a_N)·ν_f|S_f| k_f·(∇a)_f,
-g_f := ν_f|S_f|δ_f|a_N − a_O|² ≥ 0. Tanımlar:
-  ε_ν(P) := ½ Σ_f [ g_f − (a_O − a_N)·ν_f|S_f| k_f·(∇a)_f ]   (yüz-tabanlı, implicit Laplacian ile tutarlı; poli mesh'te
-  yerel ≥ 0 garanti yok — not düşülür);   a_P·Σ_f s J_f = −ε_ν(P) + Σ_f s F^D_f.
-  e_diff(P) := ε_ν(P) − 2ν (S:S)_P V_P  (TANI; kapanışa girmez);  e_dev(P) := −a_P·D2_P V_P (kapanışa girer, küçük).
+- The convective flux is `phi^n`: the momentum matrix is assembled before the pressure correctors update the flux. With more than
+  one outer corrector the flux of the last outer iteration approaches `phi^{n+1}`.
+- Diffusive face flux `J_f = nu_f |S_f| [delta_f (U_N - U_O) + k_f.(grad U)_f]` (`Gauss linear corrected`), where `delta_f` is the
+  non-orthogonal delta coefficient, `k_f` the non-orthogonal correction vector (zero on an orthogonal mesh) and `(grad U)_f` the
+  linearly interpolated Gauss gradient.
+- `D2_P = [fvc::div(nu dev2(T(grad U)))]_P` is explicit; it vanishes in the continuous limit for a divergence-free field but not
+  discretely.
+- `r_P` is the momentum residual: what remains when (1) is reassembled with the final `a`, `p^{n+1}` and `phi^n`. It contains the
+  PISO splitting error, the linear-solver residuals, and the lag of every nonlinear ingredient (limiters, explicit gradients,
+  non-orthogonal corrections, `dev2`) that the solver evaluates with a provisional velocity and the audit with `a`.
 
-## 6. Artık: e_iter(P) := a_P·r_P V_P
-r "çözüldüğü gibi" (φ^n, §1). Bileşenleri: (i) PISO bölme artığı; (ii) lineer çözücü artıkları (solverPerformance'tan
-ayrıca raporlanır); (iii) doğrusal-olmama gecikmesi (limiter/explicit gradyan/non-orth/dev2). B0 (linear, düzgün hex,
-ortogonal) için (iii) yalnız dev2 → e_iter ≈ saf bölme artığı; LUST/limitedLinear/poli'de (iii) büyür → V4 ölçer.
-Adı "algebraic/iterative residual"; "dissipation" denmez.
+Primary convention: (1) is dotted with `a_P` and summed over the cells.
 
-## 7. Kapanış
-(1)·a_P V_P ve §2–§6 ile, hücre başına:
-  (K_P^{n+1} − K_P^n)/Δt = −e_time − e_conv − e_mesh − e_cont − ε_ν − e_dev − e_pres + e_iter − Σ_f s (F^C_f − F^D_f + X_f)
-Küresel (teleskoplayan akılar sıfır):
-  dK/dt = −ε_ν − e_time − e_conv − e_mesh − e_cont − e_pres − e_dev + e_iter.                                   (2)
-R_closure := |LHS − RHS| / max(|LHS|, |RHS|, ε_mak); kümülatif: |K(t) − K(0) + ∫_0^t (ε_ν + Σe − e_iter) dt'| / K(0).
-(2) cebirsel özdeşliktir; R_closure yüz teleskoplaması, cyclic/processor yüz işleme ve kayan-nokta indirgemesini test
-eder. FO'nun çözücünün gerçekten çözdüğü denklemi gördüğü V4 (enstrümante çözücü) ile test edilir.
+## 2. Time term: `e_time := a.T(a) V - (K^{n+1} - K^n)/dt`
 
-## 8. Konvansiyon çiftleri (aynı koşuda küresel seri; yerel alan yalnız birincil)
-| Seçim | Birincil | Alternatif |
+### 2.1 Euler, `T(a) = (a - b)/dt`
+
+`a.(a-b) = 1/2 |a|^2 - 1/2 |b|^2 + 1/2 |a-b|^2`, hence `e_time = 1/2 |a-b|^2 V/dt >= 0`: exactly dissipative.
+
+### 2.2 Backward (BDF2), constant step, `T(a) = (3a - 4b + d)/(2 dt)`
+
+The G-stability identity is
+`2 a.(3a - 4b + d) = |a|^2 + |2a - b|^2 - |b|^2 - |2b - d|^2 + |a - 2b + d|^2`.
+With `E_G(a,b) := 1/4 (|a|^2 + |2a-b|^2)` and `X(a,b) := E_G(a,b) - 1/2 |a|^2 = 1/4 (a-b).(3a-b)`,
+
+    a.T(a) = [E_G(a,b) - E_G(b,d)]/dt + |a - 2b + d|^2/(4 dt)
+    e_time = [X(a,b) - X(b,d)] V/dt  +  |a - 2b + d|^2 V/(4 dt)  =: e_time^store + e_time^diss
+
+`e_time^diss >= 0` is strictly dissipative; `e_time^store` telescopes in time (its integral reduces to boundary terms) and has no
+definite sign. Check: for `a - b = b - d = v` the term reduces to `1/2 |v|^2 V/dt`, storage only.
+
+For a variable step OpenFOAM uses `T(a) = (c a - c0 b + c00 d)/dt` with `r = dt/dt0`, `c = 1 + r/(1+r)`, `c00 = r^2/(1+r)`,
+`c0 = c + c00`, which reduces to the constant-step coefficients `3/2, 2, 1/2` for `r = 1`. The time term is then still evaluated
+exactly from its definition; see the addendum below. In the first step of a run the previous level is undefined and the scheme
+reduces to Euler.
+
+### 2.3 Crank-Nicolson with off-centering `psi`, `T(a) = ((1+psi)/dt)(a - b) - psi ddt0^n`
+
+`ddt0^n` is the stored time derivative of the previous step, which OpenFOAM updates at the first `ddt` call of a step. With the
+Euler identity,
+
+    e_time = psi [(K^{n+1} - K^n)/dt - a.ddt0^n V] + ((1+psi)/(2 dt)) |a-b|^2 V
+
+For `psi = 0` this is the Euler term; the first step of a run uses Euler.
+
+### 2.4 Alternative multiplier `U^{n+1/2} = 1/2 (a + b)`
+
+`1/2 (a+b).(a-b)/dt = (K^{n+1} - K^n)/dt` exactly, so the Euler time term vanishes identically with this multiplier and the
+temporal error migrates into the other terms. It is reported as a global time series only; the per-cell fields use `a`.
+
+## 3. Convective term: `W_P := a_P . sum_f s phi_f U_f^sch`
+
+Writing `U_f^sch = U_f^mid + delta_f` and `a_P.delta_f = 1/2 (a_P - a_N').delta_f + U_f^mid.delta_f`, the contribution of one face
+to the owner cell (for the neighbour, `s` changes sign) is
+
+    s phi_f a_P.U_f^sch = s phi_f 1/2 |a_P|^2  +  1/2 d_f  +  s F^C_f
+    d_f   := s_Pf phi_f (a_P - a_P').delta_f          (the same value in both cells)
+    F^C_f := phi_f [1/2 a_O.a_N + U_f^mid.delta_f]    (the same in both cells, hence telescoping)
+
+where `P'` is the cell on the other side of `f`. This defines, per cell,
+
+    e_cont(P) := 1/2 |a_P|^2 (div phi)_P V_P
+    m_f       := d_f for linear interpolation = s phi_f (w_f - 1/2)(a_P - a_P').(a_O - a_N)   (zero on a uniform hex mesh)
+    e_mesh(P) := 1/2 sum_f m_f
+    e_conv(P) := 1/2 sum_f (d_f^sch - m_f)            (deviation of the scheme from linear; identically zero for linear)
+
+so that `W_P = e_cont + e_conv + e_mesh + sum_f s F^C_f` and, globally, `sum_P W_P = sum_P (e_cont + e_conv + e_mesh)`.
+
+Particular schemes: for `upwind`, `delta_f = +-1/2 (a_O - a_N)` depending on the flow direction, so that
+`d_f = 1/2 |phi_f| |a_O - a_N|^2 >= 0` face by face, which provides a known-answer test. For `linear`,
+`delta_f = (w_f - 1/2)(a_O - a_N)`. For `cubic`, `LUST`, `linearUpwind` and `limitedLinear`, `delta_f` involves gradients or
+limiters and `d_f` has no definite sign.
+
+Face-to-cell distribution: half to each cell (primary); the owner-side alternative changes the local field but not the global sum.
+Flux convention: `phi^n` (primary); the effect of `phi^{n+1}` is reported as the flux-lag term `e_phi`.
+
+## 4. Pressure term: `a_P.(G p)_P V_P = sum_f s S_f.a_P p_f`, `p_f = w_f p_O + (1-w_f) p_N`
+
+Summation by parts gives `sum_P a_P.(Gp)_P V_P = sum_P p_P (G^T a)_P V_P` with
+
+    (G^T a)_P V_P := sum_{f in P} omega_Pf S_f.(a_O(f) - a_N(f)),    omega_Pf = w_f if P = O(f), else 1 - w_f
+
+The same expression `omega_Pf S_f.(a_O - a_N)` is used on both sides of a face; writing it with the opposite sign on the neighbour
+side breaks the identity. Equivalently `(G^T a)_P V_P = -sum_f s S_f.U~_f` with the weight-transposed interpolation
+`U~_f = (1 - omega_Pf) a_P + omega_Pf a_P'`, which on a uniform hexahedral mesh is minus the mid-point divergence of the
+cell-centred velocity. The cell identity is exact:
+
+    a_P.(Gp)_P V_P = p_P (G^T a)_P V_P + sum_f s X_f,    X_f := w_f p_O (S_f.a_N) + (1 - w_f) p_N (S_f.a_O)
+
+with `X_f` the same in both cells, hence telescoping. This defines `e_pres(P) := p_P (G^T a)_P V_P`.
+
+Interpretation: the pressure equation drives the divergence of the face flux to zero, but not the weight-transposed divergence of
+the cell-centred velocity. The difference is the Rhie-Chow filter together with the transient flux correction, since
+`phi = S.interp(HbyA) + ddtCorr - rAU_f grad_f p . S` while `a = HbyA - rAU grad p`. The share of the transient correction cannot
+be separated within one run; it is obtained by comparing paired runs with the correction on and off (`ddtCorr` set to zero in the
+`ddtSchemes` entry). An alternative local form, `e_pres'(P) := sum_f s p_f S_f.(a_P - U_f^mid)`, has the same global sum and a
+different local distribution.
+
+## 5. Diffusive term: `a_P . sum_f s J_f`
+
+Splitting `a_P.J_f` into a symmetric and an antisymmetric part gives, for the owner,
+`a_O.J = 1/2 (a_O + a_N).J + 1/2 (a_O - a_N).J`, and for the neighbour
+`-a_N.J = -1/2 (a_O + a_N).J + 1/2 (a_O - a_N).J`. The symmetric part `F^D_f := 1/2 (a_O + a_N).J_f` telescopes, and because the
+diffusive term enters (1) with a minus sign every cell receives `-1/2 (a_O - a_N).J_f` from it. With the orthogonal part of `J_f`
+equal to `nu |S_f| delta_f (a_N - a_O)`,
+
+    eps_nu(P) := 1/2 sum_f [ g_f - (a_O - a_N) . nu_f |S_f| k_f.(grad a)_f ],   g_f := nu_f |S_f| delta_f |a_N - a_O|^2 >= 0
+
+so that `a_P . sum_f s J_f = -eps_nu(P) + sum_f s F^D_f`. This face-based dissipation is consistent with the implicit Laplacian
+that the solver inverts; on a polyhedral mesh its local value is not guaranteed to be non-negative. Two further quantities are
+defined: the diagnostic `e_diff(P) := eps_nu(P) - 2 nu (S:S)_P V_P`, which does not enter the closure, and the explicit stress
+term `e_dev(P) := -a_P.D2_P V_P`, which does.
+
+## 6. Algebraic residual: `e_iter(P) := a_P.r_P V_P`
+
+The residual is that of the equation as solved, with `phi^n`. It contains the PISO splitting error, the linear-solver residuals,
+and the lag of the nonlinear ingredients. For the linear scheme on an orthogonal hexahedral mesh the last contribution reduces to
+the `dev2` term, so that `e_iter` is essentially the splitting residual; with LUST, limited schemes or polyhedral meshes it grows,
+which is what the comparison with an instrumented solver measures. The term is called an algebraic residual, not a dissipation.
+
+## 7. Closure
+
+Dotting (1) with `a_P V_P` and collecting Sections 2 to 6 gives, per cell,
+
+    (K_P^{n+1} - K_P^n)/dt = -e_time - e_conv - e_mesh - e_cont - eps_nu - e_dev - e_pres + e_iter
+                             - sum_f s (F^C_f - F^D_f + X_f)
+
+and globally, since the face fluxes telescope,
+
+    dK/dt = -eps_nu - e_time - e_conv - e_mesh - e_cont - e_pres - e_dev + e_iter                     (2)
+
+The closure residual is `R_closure := |LHS - RHS| / max(|LHS|, |RHS|, eps0)` with a floor `eps0 = 1e-15`, and the cumulative
+closure is `|K(t) - K(0) + int_0^t (eps_nu + sum_i e_i - e_iter) dt'| / K(0)`. Equation (2) is an algebraic identity; its residual
+tests the implementation (face telescoping, coupled-patch handling, floating-point reduction), not the solver. Whether the audit
+reconstructs the equation that the solver actually solved is a separate question, answered with an instrumented copy of the solver
+that writes the residual of its own momentum system.
+
+## 8. Convention pairs
+
+Each alternative is written as a global time series in the same run; the per-cell fields use the primary convention.
+
+| Choice | Primary | Alternative |
 |---|---|---|
-| Çarpan | U^{n+1} | U^{n+½} (§2.4) |
-| Konvektif referans | midPoint (e_conv = şema − linear; e_mesh = linear − midPoint) | linear (e_mesh ≡ 0, e_conv = şema − linear) |
-| Akı | φ^n | φ^{n+1} (e_φ ile) |
-| Yüz→hücre dağıtımı | ½–½ | owner |
-| e_pres yerel formu | p_P (G^T a)_P V_P | Σ_f s p_f S_f·(a_P − U_f^{mid}) |
+| Multiplier | `U^{n+1}` | `U^{n+1/2}` (Section 2.4) |
+| Convective reference | mid-point (`e_conv` = scheme - linear; `e_mesh` = linear - mid-point) | linear (`e_mesh` identically zero) |
+| Flux | `phi^n` | `phi^{n+1}` (reported as `e_phi`) |
+| Face-to-cell distribution | half-half | owner side |
+| Local form of `e_pres` | `p_P (G^T a)_P V_P` | `sum_f s p_f S_f.(a_P - U_f^mid)` |
 
-## 9. İşaret ve tanım özeti (FO kodu için)
-| Terim | Tanım (hücre, ×V_P) | İşaret |
+## 9. Summary of definitions and signs
+
+| Term | Definition (per cell, times `V_P`) | Sign |
 |---|---|---|
-| e_time | a·T(a)V − ΔK/Δt (kapalı formlar §2) | Euler ≥ 0; BDF2 diss ≥ 0, store ± |
-| e_conv | ½Σ_f (d_f^{sch} − m_f) | ± (upwind: ≥ 0 toplam) |
-| e_mesh | ½Σ_f m_f | ± (düzgün hex: 0) |
-| e_cont | ½|a|² (div φ) V | ± (div φ ≈ p-tol) |
-| e_pres | p (G^T a) V | ± |
-| ε_ν | ½Σ_f [g_f − (a_O−a_N)·ν|S_f|k_f·(∇a)_f] | ≥ 0 (ortogonal); poli ± |
-| e_dev | −a·D2 V | ± küçük |
-| e_iter | a·r V | ± |
-| e_φ | a·[C(φ^{n+1}) − C(φ^n)]a V | ± (raporlanır, (2)'ye girmez) |
-| e_diff | ε_ν − 2ν(S:S)V | tanı |
+| `e_time` | `a.T(a) V - dK/dt` (closed forms in Section 2) | Euler >= 0; BDF2 dissipative part >= 0, storage part either |
+| `e_conv` | `1/2 sum_f (d_f^sch - m_f)` | either (upwind: non-negative in total) |
+| `e_mesh` | `1/2 sum_f m_f` | either (zero on a uniform hexahedral mesh) |
+| `e_cont` | `1/2 \|a\|^2 (div phi) V` | either (at the level of the pressure tolerance) |
+| `e_pres` | `p (G^T a) V` | either |
+| `eps_nu` | `1/2 sum_f [g_f - (a_O - a_N).nu \|S_f\| k_f.(grad a)_f]` | non-negative on an orthogonal mesh; either on a polyhedral one |
+| `e_dev` | `-a.D2 V` | either, small |
+| `e_iter` | `a.r V` | either |
+| `e_phi` | flux-lag term | either (reported, not part of (2)) |
+| `e_diff` | `eps_nu - 2 nu (S:S) V` | diagnostic |
 
-## 10. Doğrulama planı (adım 1 go ölçütü)
-`stage1/toyClosure.py`: 2B periyodik N×N mesh (düzgün ve rastgele pertürbe), rastgele a, b, d, p, φ, ν, ddt0; kontrol:
-(i) BDF2 özdeşliği; (ii) e_time kapalı formları (Euler/BDF2/CN) ≡ tanım; (iii) konvektif yüz ayrışımı (midPoint/linear/
-upwind) hücre ve küresel; (iv) basınç transpoze özdeşliği ve X_f hücre özdeşliği; (v) difüzyon hücre özdeşliği
-(non-orth dahil); (vi) tam kapanış (2) ve hücre formu ≤ 1e-13 (rel.).
+## Addendum: BDF2 with a variable time step
 
-
-## Addendum (v1.1, 2026-09-18): BDF2 with a variable time step
-OpenFOAM's `backward` scheme with Δt ≠ Δt₀ (r = Δt/Δt₀) uses T(a) = (c a − c₀ b + c₀₀ d)/Δt with
-c = 1 + r/(1+r), c₀₀ = r²/(1+r), c₀ = c + c₀₀ (first step: Euler). The exact time term is e_time = a·T(a) V − ΔK/Δt (operator
-route, verified against `fvc::ddt(U)` by `chkTime`). The constant-step split e_time = [X(a,b) − X(b,d)]V/Δt + |a − 2b + d|²V/(4Δt),
-X(u,v) = ¼(u−v)·(3u−v), is an identity only for r = 1; for r ≠ 1 the function object keeps the G-norm change as the storage part
-and reports the remainder e_time − storage as the dissipative part (Grigorieff: sign-definiteness of variable-step BDF2 requires a
-step-dependent G-norm, which would not telescope). Test: 16³ TGV, `adjustTimeStep yes, maxCo 0.5`, Δt varying 0.12 → 0.22 over
-7 steps: R_closure ≤ 3e-15 at every step (v1.0: 5e-2 at the steps where Δt changed).
+With `r = dt/dt0` the `backward` scheme of OpenFOAM uses `T(a) = (c a - c0 b + c00 d)/dt`, `c = 1 + r/(1+r)`, `c00 = r^2/(1+r)`,
+`c0 = c + c00`. The time term is evaluated from its definition, `e_time = a.T(a) V - dK/dt` (the operator route, checked against
+`fvc::ddt(U)` at every step). The constant-step split into a storage and a non-negative dissipative part is an identity for
+`r = 1` only; for `r != 1` the function object keeps the change of the G-norm as the storage part and reports the remainder as the
+dissipative part, which is then not sign-definite, because a sign-definite split for variable steps requires a step-dependent
+G-norm that does not telescope. In a 16^3 test with the time step changing at every step by up to 17 per cent the closure residual
+stays below 3e-15, whereas the constant-step closed form gives residuals of up to 5e-2 at the steps at which the step changes.

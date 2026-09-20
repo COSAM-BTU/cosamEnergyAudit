@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Checkerboard indicators of reconstructed OpenFOAM fields on the uniform N^3 blockMesh (review round 3, A6).
+"""Checkerboard indicators of reconstructed OpenFOAM fields on a uniform N^3 mesh.
 For a cell field q: (1) Nyquist fraction  E_Nyq = sum |q_hat|^2 over modes with any |k_i| = N/2  /  sum |q_hat|^2 (mean excluded);
 (2) odd-even indicator  chi = rms( q_P - mean of the six face neighbours ) / rms( q - <q> ).  Both for p and for |U| components.
 Usage: checkerboard.py <case> <N> <time> [<time> ...]"""

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Campaign case generator (INSTRUCTIONS §8): builds a 3D TGV case directory from parameters, with the run_id naming
+"""Campaign case generator: builds a three-dimensional Taylor-Green case directory from parameters, with the run_id naming
 convention  <block><Re>_h<N>[_<mesh>]_<scheme>_<ddt>_dt<dt>_nC<n>_dc<0|1>_p<tol>[_<tag>].
 Usage: makeCase.py --block S --Re 1600 --N 128 --scheme linear --ddt backward --dt 0.025 [--nCorr 2] [--nOuter 1]
        [--ddtCorr 1] [--ptol 1e-10] [--mesh hex|sin|rand|poly] [--momPred 1] [--endTime 20] [--writeInterval 0.5] [--tag x] [--out DIR]"""
@@ -28,7 +28,6 @@ shutil.copytree(a.template, dst)
 def fd(entry, value, f):
     subprocess.run(["foamDictionary", "-entry", entry, "-set", value, os.path.join(dst, f)], check=True, stdout=subprocess.DEVNULL)
 # blockMeshDict: edit the N macro textually (NOT via foamDictionary, which rewrites the file with 6-digit precision -> L = 6.28319 != 2*pi;
-# found 2026-09-17: perturbed-mesh cyclics then mismatch (closure 1e-9) and the rand perturbation moves far-plane points)
 bm = os.path.join(dst, "system/blockMeshDict"); txt = open(bm).read(); txt2, nsub = re.subn(r"^N\s+\d+;", "N %d;" % a.N, txt, flags=re.M)
 assert nsub == 1 and "6.283185307179586" in txt2, "blockMeshDict template: expected 'N <n>;' line and full-precision L"
 open(bm, "w").write(txt2)
@@ -45,13 +44,14 @@ fd("solvers/p/solver", "GAMG", "system/fvSolution"); fd("solvers/p/smoother", "G
 vf = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "VERSION")
 meta = dict(run_id=rid, fo_version=(open(vf).read().strip() if os.path.exists(vf) else "unversioned"), **vars(a)); json.dump(meta, open(os.path.join(dst, "run_meta.json"), "w"), indent=1)
 open(os.path.join(dst, "Allrun.pre"), "w").write("""#!/bin/bash
-# pre-processing (serial mesh; fields set IN PARALLEL after decomposition — see INSTRUCTIONS §7)
+# pre-processing: the mesh is generated in serial, the fields are set in parallel after decomposition, because fields set
+# in serial and then decomposed carry unevaluated processor-patch values into the first momentum assembly
 cd "${0%%/*}" || exit 1
 source /usr/lib/openfoam/openfoam2406/etc/bashrc
 MESH=%s; N=%d; DX=$(python3 -c "import math; print(2*math.pi/%d)")
 foamDictionary -entry writeFormat -set ascii system/controlDict > /dev/null
 if [ "$MESH" = "poly" ]; then
-  PM=/scratch/soscfd00/tgvAudit/meshes/poly$N/constant/polyMesh
+  PM=${POLYMESH_DIR:?set POLYMESH_DIR to a prepared polyhedral polyMesh directory}
   [ -d $PM ] || { echo "POLY MESH MISSING: $PM"; exit 1; }
   rm -rf constant/polyMesh && cp -r $PM constant/polyMesh && echo "poly mesh copied from $PM" > log.blockMesh
 else

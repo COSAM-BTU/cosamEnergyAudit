@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Single-node pseudo-spectral (Fourier–Galerkin) incompressible Navier–Stokes solver for the 3D Taylor–Green vortex
-on [0,2pi]^3 — fallback reference generator (INSTRUCTIONS §6/§9, V0). Rotational form u x omega, 2/3-rule dealiasing,
+on [0,2pi]^3, used to generate the reference solutions. Rotational form u x omega, 2/3-rule dealiasing,
 explicit RK4 (viscous term explicit), real-to-complex FFTs (scipy.fft with threads; pyfftw if available).
 Output columns match the UCL reference file: t  Ek  -dEk/dt  enstrophy  (+ 2*nu*enstrophy, |u|max).
 Usage: tgvSpectral.py --N 128 --Re 1600 --dt 0.005 --T 20 --out spec_Re1600_N128.dat [--every 1] [--threads 32]"""

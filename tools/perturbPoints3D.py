@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Periodic perturbation of an ASCII polyMesh/points file for the [0,2pi]^3 TGV box.
-Recipe (a) sinusoidal (INSTRUCTIONS §8.4): x'_i = x_i + A sin(x) sin(y) sin(z)  -> vanishes on all box planes,
+Recipe (a) sinusoidal: x'_i = x_i + A sin(x) sin(y) sin(z)  -> vanishes on all box planes,
   so cyclic faces are unchanged; smooth, keeps 2nd order.
 Recipe (b) random: interior points displaced by U(-alpha, alpha)*dx with a fixed seed; boundary-plane points fixed.
 Usage: perturbPoints3D.py sin A | perturbPoints3D.py rand alpha dx [seed]"""

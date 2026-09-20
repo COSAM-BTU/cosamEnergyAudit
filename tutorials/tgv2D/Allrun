@@ -1,8 +1,7 @@
-#!/bin/bash
+#!/bin/sh
 cd "${0%/*}" || exit 1
-source /usr/lib/openfoam/openfoam2406/etc/bashrc
-rm -rf [1-9]* 0.* postProcessing log.* 2>/dev/null
-blockMesh > log.blockMesh 2>&1 || { echo blockMesh FAILED; exit 1; }
-setExprFields > log.setExprFields 2>&1 || { echo setExprFields FAILED; exit 1; }
-pimpleFoam > log.pimpleFoam 2>&1 || { echo pimpleFoam FAILED; tail -30 log.pimpleFoam; exit 1; }
+. ${WM_PROJECT_DIR:?}/bin/tools/RunFunctions
+runApplication blockMesh
+runApplication setExprFields
+runApplication $(getApplication)
 echo "RUN OK"; grep -E "kineticEnergyAudit" log.pimpleFoam | tail -3

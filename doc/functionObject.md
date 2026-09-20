@@ -20,7 +20,7 @@ old-time levels) and the case's own `fvSchemes` operators, the discrete momentum
 
 Primary convention: multiplier U^{n+1}, midPoint reference, φ^n (as solved in PISO), half–half face-to-cell
 distribution. Alternatives (U^{n+1/2} multiplier, owner distribution) are written as global time series in the same run.
-Full derivation: `DERIVATION.md` (study repository); numerically verified to round-off with `stage1/toyClosure.py`.
+Full derivation: `DERIVATION.md`; all identities are verified to round-off on two-dimensional periodic meshes with random fields.
 
 ## Usage
 ```
@@ -53,11 +53,11 @@ Offline recomputation of any written time: `pimpleFoam -postProcess -dict system
 - Use `relaxationFactors { equations { ".*" 1; } }`, `pRefCell/pRefValue`, `momentumPredictor yes`.
 - **Coupled patches must match exactly.** On perturbed/periodic meshes the closure holds to round-off only if the cyclic face pairs are
   geometrically identical (weights w and 1−w complementary). A box length rounded to 6 digits (e.g. `foamDictionary` rewriting
-  `blockMeshDict`, L = 6.28319 ≠ 2π) plus a periodic point perturbation left mismatched cyclics and R_closure ≈ 1e-9 (2026-09-17);
-  the pressure-transpose check `chkPres` flags this.
+  `blockMeshDict`, L = 6.28319 instead of 2π) together with a periodic point perturbation leaves mismatched cyclics and
+  R_closure of order 1e-9; the pressure-transpose check `chkPres` flags this.
 - **Parallel runs: initialise the fields in parallel** (`decomposePar` → `mpirun setExprFields -parallel`). Fields set
   in serial and decomposed carry unevaluated processor-patch values into the first momentum assembly; the audit flags
-  this as R_closure ≈ 6e-3 at step 1 (a reproducibility note in the paper).
+  this as R_closure of order 6e-3 at the first step.
 
 ## Build
 ```
@@ -66,14 +66,14 @@ cd cosamEnergyAudit && wmake      # -> $FOAM_USER_LIBBIN/libcosamEnergyAuditFunc
 ```
 
 ## Changes
-- **v1.1 (2026-09-18):** `backward` with a *variable* time step: v1.0 evaluated e_time with the constant-step BDF2 closed form
-  (X(a,b) − X(b,d) + |a−2b+d|²/4Δt), which is not an identity when Δt ≠ Δt₀ (adaptive Δt run: R_closure up to 3e-2 at every
-  step where Δt changed; caught by `chkTime`). v1.1 uses the exact operator route e_time = a·T(a) V − ΔK/Δt with OpenFOAM's
+- **v1.1:** `backward` with a *variable* time step: v1.0 evaluated e_time with the constant-step BDF2 closed form
+  (X(a,b) − X(b,d) + |a−2b+d|²/4Δt), which is not an identity when Δt ≠ Δt₀: in an adaptive-step run the closure residual reached
+  3e-2 at every step at which Δt changed, and the consistency check `chkTime` flagged it. v1.1 uses the exact operator route e_time = a·T(a) V − ΔK/Δt with OpenFOAM's
   variable-step coefficients whenever Δt ≠ Δt₀; the storage part keeps the constant-step G-norm change (telescopes exactly),
   the dissipative part is the remainder (sign-definite only for Δt = Δt₀). Constant-step results are bit-identical to v1.0.
   Δt₀ is taken from `Time::deltaT0` (also available offline from `<time>/uniform/time`).
 
-## Verification status (2026-09-15, re-run 2026-09-18 with v1.1: identical)
+## Verification status (v1.1)
 2D TGV 32² (Euler/backward/backward-0/CN0.9; linear/upwind/LUST/linearUpwind/limitedLinear/cubic; uniform and
 perturbed mesh): R_closure ≤ 5e-14 incl. step 1; 3D 16³ uniform/perturbed (non-orthogonality up to 23°): ≤ 3e-15;
 polyhedral (Gmsh tet → polyDualMesh) cyclic mesh: 5e-15; 4 ranks vs serial 1.6e-12; offline and restart bit-identical;
