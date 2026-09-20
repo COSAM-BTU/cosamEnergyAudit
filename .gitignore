@@ -12,3 +12,6 @@ log.*
 *.pyc
 __pycache__/
 .DS_Store
+# release archives (GitHub and Zenodo build these from the tag)
+*.zip
+*.tar.gz

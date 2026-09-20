@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.2 (2026-09-20)
+
+- Removed two release archives of version 1.1.0 that had been committed to the repository root by mistake; release archives are
+  built from the tag by GitHub and Zenodo and are now ignored by `.gitignore`.
+- No change to the function object source, the tools or the documentation.
+
 ## 1.1.1 (2026-09-20)
 
 - Documentation: the derivation document is rewritten in English and is self-contained.
